@@ -21,8 +21,7 @@ router.get('/', async (req, res, next) => {
     sql += ' ORDER BY created_at DESC';
 
     const [rows] = await db.execute(sql, params);
-    rows.forEach(r => { r.tags = r.tags ? JSON.parse(r.tags) : []; });
-    res.json(rows);
+    res.json(rows.map(r => ({ ...r, tags: r.tags ? JSON.parse(r.tags) : [] })));
   } catch (err) {
     next(err);
   }

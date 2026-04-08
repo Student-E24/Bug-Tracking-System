@@ -6,7 +6,8 @@
 const Auth = (() => {
   const ADMIN_USERNAME = 'admin';
   const ADMIN_PASSWORD = 'admin123';
-  const SESSION_KEY = 'bts_session';
+  const SESSION_KEY    = 'bts_session';
+  const LOGIN_PAGE     = 'index';
 
   function login(username, password) {
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
@@ -21,7 +22,7 @@ const Auth = (() => {
 
   function logout() {
     sessionStorage.removeItem(SESSION_KEY);
-    window.location.href = 'index';
+    window.location.href = LOGIN_PAGE;
   }
 
   function isLoggedIn() {
@@ -39,7 +40,7 @@ const Auth = (() => {
   /** Redirect to login page when not authenticated. */
   function requireAuth() {
     if (!isLoggedIn()) {
-      window.location.href = 'index';
+      window.location.href = LOGIN_PAGE;
       return false;
     }
     return true;
