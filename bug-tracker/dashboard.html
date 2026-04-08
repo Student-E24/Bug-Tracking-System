@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BugTracker – Dashboard</title>
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app-nav"></div>
+
+  <div class="page-content">
+    <!-- Stat strip -->
+    <div class="row g-3 mb-4" id="stat-strip"></div>
+
+    <!-- Fun widget -->
+    <div class="mb-3" id="fun-widget"></div>
+
+    <!-- Kanban board -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Kanban Board</h5>
+      <a href="issue-detail?new=1" class="btn btn-primary btn-sm">+ New Issue</a>
+    </div>
+
+    <div class="kanban-board" id="kanban-board"></div>
+  </div>
+
+  <!-- Issue quick-view modal -->
+  <div class="modal fade" id="issue-modal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content" id="issue-modal-body"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/issues.js"></script>
+  <script src="js/people.js"></script>
+  <script src="js/projects.js"></script>
+  <script src="js/seed.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    App.init();
+    Seed.run();
+
+    /* ── Stat strip ──────────────────────────────────────────── */
+    function renderStats() {
+      const all = Issues.getAll();
+      const stats = [
+        { label: 'Total Issues',   value: all.length,                               color: 'primary',   icon: '📋' },
+        { label: 'In Progress',    value: all.filter(i => i.status === 'in-progress').length, color: 'warning', icon: '⚙️' },
+        { label: 'Critical',       value: all.filter(i => i.priority === 'critical').length,  color: 'danger',  icon: '‼️' },
+        { label: 'Done',           value: all.filter(i => i.status === 'done').length,         color: 'success', icon: '✅' },
+      ];
+      const strip = document.getElementById('stat-strip');
+      strip.innerHTML = stats.map(s => `
+        <div class="col-6 col-md-3">
+          <div class="stat-card bg-${s.color}" data-icon="${s.icon}">
+            <div class="stat-number">${s.value}</div>
+            <div class="stat-label">${s.label}</div>
+          </div>
+        </div>`).join('');
+    }
+
+    /* ── Kanban ──────────────────────────────────────────────── */
+    let draggedId = null;
+
+    function renderKanban() {
+      const board = document.getElementById('kanban-board');
+      board.innerHTML = Issues.STATUSES.map(status => {
+        const cards = Issues.byStatus(status.id);
+        return `
+          <div class="kanban-column" data-status="${status.id}"
+               ondragover="onDragOver(event)" ondrop="onDrop(event, '${status.id}')">
+            <div class="kanban-column-header">
+              <span>${status.label}</span>
+              <span class="count-badge">${cards.length}</span>
+            </div>
+            <div class="kanban-cards-list">
+              ${cards.length === 0
+                ? `<div class="empty-state py-3"><div class="empty-icon">📭</div><small>No issues</small></div>`
+                : cards.map(card => cardHtml(card)).join('')}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function cardHtml(issue) {
+      const person = issue.assigneeId ? People.get(issue.assigneeId) : null;
+      const project = issue.projectId ? Projects.get(issue.projectId) : null;
+      const tags = (issue.tags || []).slice(0, 2).map(t => `<span class="tag-chip">${t}</span>`).join('');
+      const pMeta = Issues.priorityMeta(issue.priority);
+      return `
+        <div class="kanban-card" data-id="${issue.id}" data-priority="${issue.priority}"
+             draggable="true"
+             ondragstart="onDragStart(event, '${issue.id}')"
+             ondragend="onDragEnd(event)">
+          <div class="kanban-card-title">${issue.title}</div>
+          <div class="mb-1">${tags}</div>
+          <div class="kanban-card-meta">
+            <span>
+              ${project ? Projects.colorDot(project) + '<small>' + project.name + '</small>' : ''}
+            </span>
+            <span class="d-flex align-items-center gap-1">
+              <span class="badge bg-${pMeta.color} text-${pMeta.color === 'warning' ? 'dark' : 'white'} px-1"
+                    style="font-size:.65rem">${pMeta.icon} ${pMeta.label}</span>
+              ${People.avatarHtml(person)}
+            </span>
+          </div>
+          <div class="mt-2 text-end">
+            <a href="issue-detail?id=${issue.id}" class="btn btn-outline-secondary btn-sm py-0 px-1"
+               style="font-size:.72rem">Edit</a>
+          </div>
+        </div>`;
+    }
+
+    /* ── Drag and Drop ───────────────────────────────────────── */
+    function onDragStart(e, id) {
+      draggedId = id;
+      e.target.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function onDragEnd(e) {
+      e.target.classList.remove('dragging');
+      document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('drag-target-active'));
+    }
+
+    function onDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const col = e.currentTarget;
+      document.querySelectorAll('.kanban-column').forEach(c => c.classList.remove('drag-target-active'));
+      col.classList.add('drag-target-active');
+    }
+
+    function onDrop(e, newStatus) {
+      e.preventDefault();
+      if (draggedId) {
+        Issues.update(draggedId, { status: newStatus });
+        draggedId = null;
+        renderKanban();
+        renderStats();
+        App.toast('Issue status updated!');
+      }
+    }
+
+    /* ── Init ────────────────────────────────────────────────── */
+    renderStats();
+    renderKanban();
+    Api.renderWidget('#fun-widget');
+  </script>
+</body>
+</html>
